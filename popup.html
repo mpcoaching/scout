@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LinkedIn Scout</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { width: 380px; max-height: 580px; overflow-y: auto; font-family: Arial, sans-serif; font-size: 13px; background: #0a0a0a; color: #e0e0e0; }
+
+    .header { background: #1F4E79; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { font-size: 14px; font-weight: bold; color: white; letter-spacing: 0.5px; }
+    .header .subtitle { font-size: 10px; color: #a0c4e8; margin-top: 2px; }
+    .header-tabs { display: flex; gap: 6px; }
+    .tab-btn { background: rgba(255,255,255,0.15); border: none; color: white; font-size: 10px; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-weight: bold; }
+    .tab-btn.active { background: rgba(255,255,255,0.35); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .section { padding: 12px 16px; border-bottom: 1px solid #1a1a1a; }
+    .section-label { font-size: 10px; color: #2E75B6; text-transform: uppercase; letter-spacing: 0.8px; font-weight: bold; margin-bottom: 8px; }
+
+    .profile-bar { background: #1a1a1a; padding: 10px 16px; border-bottom: 1px solid #333; display: none; }
+    .profile-bar .name { font-weight: bold; font-size: 13px; color: #fff; }
+    .profile-bar .headline { font-size: 11px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .xray-input { width: 100%; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 7px 10px; font-size: 11px; color: #ccc; margin-bottom: 6px; }
+    .xray-input::placeholder { color: #555; }
+
+    .btn-row { display: flex; gap: 6px; margin-top: 4px; }
+
+    .btn { padding: 9px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; text-align: left; transition: opacity 0.2s; display: flex; flex-direction: column; gap: 2px; width: 100%; }
+    .btn:hover { opacity: 0.85; }
+    .btn-label { font-size: 10px; font-weight: normal; opacity: 0.75; }
+
+    .btn-search  { background: #2d5a2d; color: white; }
+    .btn-signal  { background: #0d7377; color: white; }
+    .btn-scrape  { background: #1F4E79; color: white; }
+    .btn-qualify { background: #1F4E79; color: white; }
+    .btn-lever   { background: #C00000; color: white; }
+    .btn-message { background: #404040; color: white; }
+
+    .btn-small { padding: 8px 12px; font-size: 11px; font-weight: bold; border: none; border-radius: 5px; cursor: pointer; flex: 1; }
+    .btn-small:hover { opacity: 0.85; }
+
+    /* Profile list */
+    .profile-list { margin-top: 8px; max-height: 240px; overflow-y: auto; }
+    .profile-item { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 8px 10px; margin-bottom: 5px; transition: border-color 0.15s; }
+    .profile-item:hover { border-color: #2E75B6; }
+    .profile-item .p-name { font-size: 12px; font-weight: bold; color: #fff; cursor: pointer; }
+    .profile-item .p-name:hover { color: #2E75B6; }
+    .profile-item .p-snippet { font-size: 10px; color: #888; margin-top: 2px; line-height: 1.4; }
+    .profile-item .p-url { font-size: 9px; color: #555; margin-top: 3px; }
+    .profile-item .p-note-display { font-size: 10px; color: #2E75B6; margin-top: 3px; font-style: italic; }
+    .profile-item .p-note-input { display: none; width: 100%; margin-top: 5px; background: #111; border: 1px solid #333; border-radius: 3px; padding: 4px 6px; font-size: 10px; color: #ccc; resize: none; }
+    .profile-item .p-note-input:focus { outline: none; border-color: #2E75B6; }
+
+    .list-meta { font-size: 10px; color: #666; margin-bottom: 6px; }
+
+    /* Output */
+    .output-area { display: none; padding: 12px 16px; border-top: 1px solid #333; }
+    .output-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .prompt-box { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 10px; font-size: 11px; color: #ccc; max-height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+
+    .copy-btn { margin-top: 8px; width: 100%; padding: 8px; background: #2E75B6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .copy-btn:hover { background: #1F4E79; }
+    .copy-btn.copied { background: #2d7a2d; }
+
+    .status { padding: 8px 16px; font-size: 11px; color: #888; border-top: 1px solid #222; display: none; }
+    .not-linkedin { padding: 12px 16px 0; font-size: 11px; color: #555; font-style: italic; }
+    .post-stat { display: inline-block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 4px 8px; font-size: 11px; margin-right: 6px; margin-bottom: 4px; }
+    .post-stat span { color: #2E75B6; font-weight: bold; }
+    .comment-item { background: #111; border-left: 2px solid #2a2a2a; padding: 6px 8px; margin-bottom: 4px; font-size: 10px; color: #888; border-radius: 0 3px 3px 0; }
+    .comment-item .c-name { color: #ccc; font-weight: bold; cursor: pointer; }
+    .comment-item .c-name:hover { color: #2E75B6; }
+    .comment-item .c-text { margin-top: 2px; line-height: 1.4; }
+    .comment-item .c-known { color: #2d7a2d; font-size: 9px; margin-top: 2px; }
+    .buttons-section { display: none; }
+    .status-btn.active { opacity: 1 !important; }
+    .post-stat { display:inline-block;background:#1a1a1a;border:1px solid #2a2a2a;
+                 border-radius:4px;padding:3px 8px;font-size:11px;margin-right:4px;margin-bottom:3px; }
+    .post-stat span { color:#2E75B6;font-weight:bold; }
+    .comment-item { background:#111;border-left:2px solid #2a2a2a;padding:5px 8px;
+                    margin-bottom:3px;font-size:10px;color:#888;border-radius:0 3px 3px 0; }
+    .comment-item .c-name { color:#ccc;font-weight:bold; }
+    .comment-item .c-text { margin-top:2px;line-height:1.4; }
+
+    /* Settings */
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1a1a1a; }
+    .setting-label { font-size: 11px; color: #ccc; }
+    .setting-sub { font-size: 10px; color: #555; margin-top: 2px; }
+    .setting-control { display: flex; align-items: center; gap: 6px; }
+    .toggle { width: 36px; height: 20px; background: #333; border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; border: none; }
+    .toggle.on { background: #2E75B6; }
+    .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s; }
+    .toggle.on::after { left: 19px; }
+    .num-input { width: 48px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 4px 6px; font-size: 11px; color: #ccc; text-align: center; }
+    .pattern-btn { width: 100%; margin-top: 12px; padding: 9px; background: #2d5a2d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: bold; }
+    .pattern-btn:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>LinkedIn Scout <span style="font-size:10px;opacity:0.6;font-weight:normal">v15.0</span></h1>
+      <div id="pendingIndicator" style="display:none;font-size:9px;color:#555;text-align:right;padding:0 16px 2px"></div>
+      <div class="subtitle" id="contextSubtitle">Find → Qualify → Engage</div>
+    </div>
+    <div class="header-tabs">
+      <button class="tab-btn active" id="tabMain">Scout</button>
+      <button class="tab-btn" id="tabList">List <span id="listBadge" style="display:none;background:#2d7a2d;color:white;border-radius:8px;padding:1px 5px;font-size:9px;margin-left:2px">0</span></button>
+      <button class="tab-btn" id="tabSettings">⚙</button>
+    </div>
+  </div>
+
+  <!-- MAIN TAB -->
+  <div class="tab-panel active" id="panelMain">
+
+    <!-- GOOGLE CONTEXT — shown when on Google results page -->
+    <div id="googleSection" style="display:none;padding:12px 16px;border-bottom:1px solid #1a1a1a">
+      <div style="font-size:10px;color:#2E75B6;text-transform:uppercase;letter-spacing:0.8px;font-weight:bold;margin-bottom:8px">Google Results Detected</div>
+      <div id="googleScrapeStatus" style="font-size:11px;color:#2d7a2d;margin-bottom:10px">Checking for profiles...</div>
+      <div class="btn-row">
+        <button class="btn-small btn-scrape" id="btnScrapeResults">📋 Scrape This Page</button>
+        <button class="btn-small" id="btnGoToList" style="background:#1F4E79;color:white">→ View List</button>
+      </div>
+    </div>
+
+
+    <!-- POST CONTEXT — shown when on LinkedIn post page -->
+    <div id="postSection" style="display:none;padding:12px 16px;border-bottom:1px solid #1a1a1a">
+      <div style="font-size:10px;color:#2E75B6;text-transform:uppercase;letter-spacing:0.8px;font-weight:bold;margin-bottom:8px">Post Detected</div>
+      <div id="postMeta" style="font-size:11px;color:#888;margin-bottom:8px"></div>
+      <div class="btn-row" style="margin-bottom:8px">
+        <button class="btn-small" id="btnTrackPost" style="background:#2d5a2d;color:white">📊 Track Post</button>
+        <button class="btn-small" id="btnReadComments" style="background:#1F4E79;color:white">💬 Read Comments</button>
+      </div>
+      <div id="postStats" style="margin-bottom:8px;display:none">
+        <div style="font-size:10px;color:#666;margin-bottom:4px">Stats captured:</div>
+        <div id="postStatsDisplay"></div>
+      </div>
+      <div id="commentsArea" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-size:10px;color:#666"><span id="commentCount">0</span> comments found</div>
+          <button class="btn-small" id="btnAnalyseComments" style="background:#C00000;color:white;padding:4px 8px;font-size:10px">⚡ Analyse</button>
+        </div>
+        <div id="commentsList" style="max-height:200px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- STEP 1: SEARCH — always present, context adjusts label + opacity -->
+    <div class="section" id="searchSection">
+      <div class="section-label" id="searchLabel">Step 1 — Build Your Search</div>
+      <input class="xray-input" id="xrayRole" placeholder='Role e.g. IT consultant, agency owner, consultant' />
+      <input class="xray-input" id="xrayAnd" value="founder" placeholder='Must include (AND) e.g. founder' />
+      <input class="xray-input" id="xrayLocation" placeholder='Cities — comma separated e.g. Brisbane, Sydney' />
+      <input class="xray-input" id="xrayExclude" placeholder='Exclude e.g. looking for, seeking (optional)' />
+      <div class="btn-row">
+        <button class="btn-small btn-search" id="btnOpenSearch">🔍 Search</button>
+        <button class="btn-small" id="btnCopyPage" style="background:#333;color:#ccc">📄 Copy</button>
+      </div>
+      <div style="font-size:10px;color:#444;margin-top:5px">Copy grabs raw text if auto-scrape missed anything.</div>
+    </div>
+
+    <!-- STEP 2: ASSESS — shown when on LinkedIn profile -->
+    <div class="profile-bar" id="profileBar">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="name" id="profileName">—</div>
+        <div id="seenBadge" style="display:none;background:#0d2b0d;border:1px solid #2d7a2d;
+             border-radius:10px;padding:2px 8px;font-size:9px;color:#2d7a2d">● seen</div>
+      </div>
+      <div class="headline" id="profileHeadline">—</div>
+      <div id="enrichmentStatus" style="margin-top:3px"></div>
+    </div>
+
+    <div class="section buttons-section" id="buttonsSection">
+      <div class="section-label">Assess This Profile</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="btn btn-signal" id="btn0">
+          ⚡ Person Signal Check
+          <span class="btn-label">Fast filter — GREEN / AMBER / RED in 5 lines. Run first.</span>
+        </button>
+        <div style="height:1px;background:#2a2a2a;margin:2px 0"></div>
+        <button class="btn btn-qualify" id="btn1">
+          ✓ ICP Qualifier
+          <span class="btn-label">Score · hard disqualifier check · ready-to-use draft</span>
+        </button>
+        <button class="btn btn-lever" id="btn2">
+          ◎ Signal & Lever Finder
+          <span class="btn-label">What's blocking them? The one lever.</span>
+        </button>
+        <button class="btn btn-message" id="btn3">
+          ✉ Engagement & Message
+          <span class="btn-label">Post comment + queued DM</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lead intelligence panel — shown on profile pages -->
+    <div id="leadPanel" style="display:none;padding:6px 16px;
+         border-top:1px solid #111"></div>
+
+    <!-- Post context — shown on post pages -->
+    <div id="postSection" style="display:none;padding:12px 16px;border-bottom:1px solid #1a1a1a">
+      <div style="font-size:10px;color:#2E75B6;text-transform:uppercase;
+                  letter-spacing:.8px;font-weight:bold;margin-bottom:8px">Post Detected</div>
+      <div id="postMeta" style="font-size:11px;color:#888;margin-bottom:8px"></div>
+      <div class="btn-row" style="margin-bottom:8px">
+        <button class="btn-small" id="btnTrackPost" style="background:#2d5a2d;color:white">📊 Track Post</button>
+        <button class="btn-small" id="btnReadComments" style="background:#1F4E79;color:white">💬 Read Comments</button>
+      </div>
+      <div id="postStats" style="margin-bottom:6px;display:none">
+        <div id="postStatsDisplay"></div>
+      </div>
+      <div id="commentsArea" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+          <div style="font-size:10px;color:#666"><span id="commentCount">0</span> comments</div>
+          <button class="btn-small" id="btnAnalyseComments"
+            style="background:#C00000;color:white;padding:3px 8px;font-size:10px">⚡ Analyse</button>
+        </div>
+        <div id="commentsList" style="max-height:180px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <div class="not-linkedin" id="notLinkedIn">Navigate to a LinkedIn profile to assess</div>
+
+    <!-- OUTPUT -->
+    <div class="output-area" id="outputArea">
+      <div class="output-label" id="outputLabel">Prompt ready</div>
+      <div class="prompt-box" id="promptBox"></div>
+      <button class="copy-btn" id="copyBtn">Copy Prompt</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+  </div>
+
+  <!-- LIST TAB -->
+  <div class="tab-panel" id="panelList">
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="section-label" style="margin-bottom:0">Profile List</div>
+        <div id="autoScrapeStatus" style="font-size:10px;color:#2d7a2d"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #1a1a1a;margin-bottom:8px">
+        <button id="btnTimerStart" style="background:#2d5a2d;color:white;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer">▶ Start</button>
+        <button id="btnTimerStop" disabled style="background:#333;color:#666;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer">■ Stop</button>
+        <span id="sessionTimer" style="font-size:12px;color:#888;font-family:monospace">0:00</span>
+        <span style="color:#333">·</span>
+        <span id="sessionCount" style="font-size:12px;color:#2E75B6;font-weight:bold">0</span>
+        <span style="font-size:10px;color:#555">assessed</span>
+        <span id="sessionRate" style="font-size:10px;color:#2d7a2d;margin-left:4px"></span>
+        <span id="pbDisplay" style="font-size:10px;color:#C07000;margin-left:auto"></span>
+      </div>
+      </div>
+      <div id="listTabMeta" class="list-meta"></div>
+      <div class="profile-list" id="listTabProfiles" style="max-height:380px"></div>
+      <div id="listTabEmpty" style="font-size:11px;color:#555;font-style:italic;padding:8px 0">No profiles yet — run a search to populate the list.</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-panel" id="panelSettings">
+    <div class="section">
+      <div id="intelStats">
+        <div style="font-size:10px;color:#555;font-style:italic">Loading...</div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-label">Agentic System API</div>
+      <div style="font-size:10px;color:#666;margin-bottom:6px">
+        API on port 5001. Start with <code style="color:#2E75B6">make start</code>.
+      </div>
+      <input id="apiKeyInput" type="password"
+        style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:4px;
+               padding:6px;font-size:11px;color:#ccc;margin-bottom:5px"
+        placeholder="API key (leave blank for local)" />
+      <div class="btn-row">
+        <button class="btn-small" id="btnSaveApiKey" style="background:#2d5a2d;color:white">✓ Save</button>
+        <button class="btn-small" id="btnFlushQueue" style="background:#1F4E79;color:white">⚡ Flush Queue</button>
+        <button class="btn-small" id="btnTestApi" style="background:#333;color:#ccc">Test</button>
+      </div>
+      <div id="apiStatus" style="font-size:10px;color:#2d7a2d;margin-top:5px"></div>
+    </div>
+    <div class="section">
+      <div class="section-label">Search Settings</div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Start on page 2</div>
+          <div class="setting-sub">Skip top-ranked (too established) results</div>
+        </div>
+        <div class="setting-control">
+          <button class="toggle" id="togglePage2"></button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Results per search term</div>
+          <div class="setting-sub">Google results to request per role type</div>
+        </div>
+        <div class="setting-control">
+          <input class="num-input" id="settingNumResults" type="number" min="5" max="20" value="10" />
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Max profiles in list</div>
+          <div class="setting-sub">Stop adding when list reaches this size</div>
+        </div>
+        <div class="setting-control">
+          <input class="num-input" id="settingMaxProfiles" type="number" min="10" max="100" value="50" />
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Pattern Recognition</div>
+      <div style="font-size:10px;color:#666;margin-bottom:8px">Analyse your recent profile results to spot patterns — who keeps showing up that isn't ICP, and why.</div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Profiles to analyse</div>
+          <div class="setting-sub">Last N assessed profiles with notes</div>
+        </div>
+        <div class="setting-control">
+          <input class="num-input" id="settingPatternN" type="number" min="5" max="50" value="20" />
+        </div>
+      </div>
+
+      <button class="pattern-btn" id="btnPatternAnalysis">🔍 Generate Pattern Analysis Prompt</button>
+      <div style="font-size:10px;color:#444;margin-top:6px">Copies a prompt to paste into Claude with your recent results data. Spots wasted searches, false positives, and ICP drift.</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">ICP Tuning</div>
+      <div style="font-size:10px;color:#666;margin-bottom:8px">The pattern analysis can suggest ICP refinements. Apply them here — Scout will use them for all future assessments. You can reset to default at any time.</div>
+      <textarea id="icpOverrideText" style="width:100%;height:80px;background:#1a1a1a;border:1px solid #333;border-radius:4px;padding:6px;font-size:10px;color:#ccc;resize:vertical" placeholder="ICP override will appear here after pattern analysis..."></textarea>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn-small" id="btnApplyIcp" style="background:#2d5a2d;color:white">✓ Apply</button>
+        <button class="btn-small" id="btnResetIcp" style="background:#1a1a1a;color:#888;border:1px solid #333">↺ Reset to Default</button>
+      </div>
+      <div id="icpStatus" style="font-size:10px;color:#2d7a2d;margin-top:4px"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">List Management</div>
+      <div class="btn-row" style="margin-top:4px">
+        <button class="btn-small" id="btnExportList" style="background:#1a1a1a;color:#ccc;border:1px solid #333">📤 Export List</button>
+        <button class="btn-small" id="btnClearAll" style="background:#3a1a1a;color:#C00000">🗑 Clear All</button>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

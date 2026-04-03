@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Scout",
+  "version": "15.3.4",
+  "description": "ICP qualification, lead intelligence, and post tracking for LinkedIn",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardWrite",
+    "storage",
+    "downloads",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://www.google.com/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/in/*",
+        "https://www.linkedin.com/posts/*",
+        "https://www.linkedin.com/feed/update/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.google.com/search*"
+      ],
+      "js": [
+        "google_scraper.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
