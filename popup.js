@@ -57,6 +57,13 @@ chrome.runtime.onMessage.addListener((message) => {
     case 'list_updated':
       if (_currentTab === 'list') renderListTab();
       break;
+    case 'actions_updated':
+      if (_currentTab === 'actions') renderActionsTab();
+      updateActionsBadge();
+      break;
+    case 'actions_data':
+      renderActionsTab(message.actions, message.counters);
+      break;
   }
 });
 
@@ -111,18 +118,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   if (_currentUrl) sendToBackground('getProfileData', { url: _currentUrl });
+  updateActionsBadge();
   wireButtons();
 });
 
 // ── Tab switching ─────────────────────────────────────────────
 function switchTab(tab) {
   _currentTab = tab;
-  ['main','list','settings'].forEach(t => {
+  ['main','list','settings','actions'].forEach(t => {
     document.getElementById('panel' + cap(t))?.classList.toggle('active', t === tab);
     document.getElementById('tab'   + cap(t))?.classList.toggle('active', t === tab);
   });
   if (tab === 'list')     renderListTab();
   if (tab === 'settings') sendToBackground('getStats');
+  if (tab === 'actions')  sendToBackground('getActions');
 }
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -347,6 +356,191 @@ function hidePendingIndicator() {
   if (el) el.style.display = 'none';
 }
 
+// ── Actions badge ────────────────────────────────────────
+function updateActionsBadge() {
+  chrome.storage.local.get(['scout_actions'], (data) => {
+    const actions = data.scout_actions || [];
+    const pending = actions.filter(a => a.status === 'PENDING').length;
+    const badge   = document.getElementById('actionsBadge');
+    if (!badge) return;
+    if (pending > 0) {
+      badge.style.display = 'inline';
+      badge.textContent   = String(pending);
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+// ── Actions tab ───────────────────────────────────────────
+let _actionsFilter = 'PENDING';
+
+function renderActionsTab(actions, counters) {
+  // If called without args, load from storage
+  if (!actions) {
+    chrome.storage.local.get(['scout_actions', 'scout_counters'], (data) => {
+      renderActionsTab(data.scout_actions || [], data.scout_counters || {});
+    });
+    return;
+  }
+
+  // Dashboard counters
+  const dash = document.getElementById('dashboardCounters');
+  if (dash && counters) {
+    const items = [
+      { label: 'Profiles', key: 'profilesViewed', icon: '👤' },
+      { label: 'Posts', key: 'postsViewed', icon: '📄' },
+      { label: 'Comments', key: 'commentsLeft', icon: '💬' },
+      { label: 'Messages', key: 'messagesSent', icon: '✉' },
+      { label: 'Done', key: 'actionsCompleted', icon: '✓' },
+    ];
+    dash.innerHTML = items.map(item => `
+      <div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;
+                  padding:4px 8px;text-align:center;flex:1;min-width:50px">
+        <div style="font-size:14px;font-weight:bold;color:#2E75B6">${counters[item.key] || 0}</div>
+        <div style="font-size:8px;color:#555">${item.icon} ${item.label}</div>
+      </div>`).join('');
+  }
+
+  // Filter buttons
+  document.querySelectorAll('.action-filter-btn').forEach(btn => {
+    const isActive = btn.dataset.filter === _actionsFilter;
+    btn.style.background   = isActive ? '#1F4E79' : '#1a1a1a';
+    btn.style.color        = isActive ? 'white'   : '#888';
+    btn.style.border       = isActive ? 'none'    : '1px solid #333';
+    btn.onclick = () => {
+      _actionsFilter = btn.dataset.filter;
+      renderActionsTab(actions, counters);
+    };
+  });
+
+  const filtered = actions
+    .filter(a => a.status === _actionsFilter)
+    .sort((a,b) => (a.priority||1) - (b.priority||1));
+
+  const listEl = document.getElementById('actionsList');
+  const empty  = document.getElementById('actionsEmpty');
+
+  if (!filtered.length) {
+    if (listEl) listEl.innerHTML = '';
+    if (empty) {
+      empty.style.display = 'block';
+      empty.textContent   = _actionsFilter === 'PENDING'
+        ? 'No pending actions — visit LinkedIn profiles to generate tasks'
+        : 'No completed actions yet';
+    }
+    return;
+  }
+
+  if (empty) empty.style.display = 'none';
+  if (!listEl) return;
+
+  const typeIcons = {
+    VIEW_POST: '📄', COMMENT: '💬', FOLLOW: '👁',
+    MESSAGE: '✉', CONNECT: '🔗', WATCH: '👀',
+  };
+  const typeColors = {
+    VIEW_POST: '#2E75B6', COMMENT: '#2d7a2d', FOLLOW: '#1F4E79',
+    MESSAGE: '#2d5a2d', CONNECT: '#555', WATCH: '#444',
+  };
+
+  listEl.innerHTML = '';
+
+  filtered.forEach(action => {
+    const item = document.createElement('div');
+    item.style.cssText = `
+      background:#1a1a1a;border:1px solid #2a2a2a;border-radius:4px;
+      padding:8px 10px;margin-bottom:6px;
+    `;
+
+    const isDone = action.status === 'DONE';
+    const color  = typeColors[action.type] || '#555';
+    const icon   = typeIcons[action.type]  || '→';
+
+    // Build action type label
+    const typeLabel = {
+      VIEW_POST: 'View Post',
+      COMMENT:   'Comment',
+      FOLLOW:    'Follow',
+      MESSAGE:   'Message',
+      CONNECT:   'Connect',
+      WATCH:     'Watch',
+    }[action.type] || action.type;
+
+    item.innerHTML = `
+      <div style="margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
+        <span style="color:${color};font-size:10px;font-weight:bold">${icon} ${typeLabel}</span>
+        <span style="color:#888;font-size:9px;cursor:pointer;text-decoration:underline"
+          class="action-profile-link" data-url="${action.profileUrl}">
+          ${(action.profileName||'').replace(' | LinkedIn','').substring(0,25)} →
+        </span>
+      </div>
+      <div style="font-size:10px;color:#ccc;line-height:1.5;margin-bottom:6px">
+        ${action.instruction}
+      </div>
+      ${action.searchHint ? `
+        <div style="background:#0d1a2b;border:1px solid #1F4E79;border-radius:3px;
+                    padding:4px 7px;margin-bottom:6px;font-size:9px;color:#2E75B6">
+          Look for: <strong>"${action.searchHint.substring(0,100)}"</strong>
+        </div>` : ''}
+      ${!isDone ? `
+        <div style="display:flex;gap:4px">
+          <button class="action-go-btn" data-url="${action.profileUrl}"
+            style="background:#1F4E79;color:white;border:none;border-radius:3px;
+                   padding:4px 10px;font-size:9px;cursor:pointer;flex:1">
+            → Go to Profile
+          </button>
+          <button class="action-done-btn" data-id="${action.id}" data-type="${action.type}"
+            style="background:#2d7a2d;color:white;border:none;border-radius:3px;
+                   padding:4px 8px;font-size:9px;cursor:pointer">
+            ✓ Done
+          </button>
+          <button class="action-skip-btn" data-id="${action.id}"
+            style="background:#1a1a1a;color:#555;border:1px solid #333;border-radius:3px;
+                   padding:4px 6px;font-size:9px;cursor:pointer">
+            ✕
+          </button>
+        </div>` : `
+        <div style="font-size:9px;color:#2d7a2d">
+          ✓ Completed ${action.completedAt ? new Date(action.completedAt).toLocaleDateString() : ''}
+        </div>`}`;
+
+    item.querySelector('.action-profile-link')?.addEventListener('click', (e) => {
+      chrome.tabs.create({ url: e.target.dataset.url });
+    });
+
+    item.querySelector('.action-go-btn')?.addEventListener('click', (e) => {
+      chrome.tabs.create({ url: e.target.dataset.url });
+    });
+
+    item.querySelector('.action-done-btn')?.addEventListener('click', (e) => {
+      const btn = e.target;
+      btn.textContent = '⏳';
+      btn.disabled    = true;
+      sendToBackground('completeAction', {
+        actionId:   btn.dataset.id,
+        actionType: btn.dataset.type,
+      });
+      setTimeout(() => sendToBackground('getActions'), 500);
+    });
+
+    item.querySelector('.action-skip-btn')?.addEventListener('click', (e) => {
+      sendToBackground('skipAction', { actionId: e.target.dataset.id });
+      setTimeout(() => sendToBackground('getActions'), 500);
+    });
+
+    listEl.appendChild(item);
+  });
+
+  // Update badge
+  const pendingCount = actions.filter(a => a.status === 'PENDING').length;
+  const badge = document.getElementById('actionsBadge');
+  if (badge) {
+    badge.style.display = pendingCount > 0 ? 'inline' : 'none';
+    badge.textContent   = String(pendingCount);
+  }
+}
+
 // ── List tab ──────────────────────────────────────────────────
 function renderListTab() {
   chrome.storage.local.get(['scout_profiles', 'scout_settings'], (data) => {
@@ -534,6 +728,7 @@ function renderIntelligenceStats(stats, funnel) {
 // ── Button wiring ─────────────────────────────────────────────
 function wireButtons() {
   document.getElementById('tabMain')    ?.addEventListener('click', () => switchTab('main'));
+  document.getElementById('tabActions') ?.addEventListener('click', () => switchTab('actions'));
   document.getElementById('tabList')    ?.addEventListener('click', () => switchTab('list'));
   document.getElementById('tabSettings')?.addEventListener('click', () => switchTab('settings'));
 
@@ -566,6 +761,10 @@ function wireButtons() {
   });
   document.getElementById('settingMaxProfiles')?.addEventListener('change', e => {
     sendToBackground('saveSetting', { key: 'maxProfiles', value: parseInt(e.target.value) });
+  });
+
+  document.getElementById('settingReEnrichInterval')?.addEventListener('change', e => {
+    sendToBackground('saveSetting', { key: 'reEnrichIntervalHours', value: parseInt(e.target.value) });
   });
 
   document.getElementById('btnGoToList')?.addEventListener('click', () => switchTab('list'));
@@ -607,6 +806,8 @@ function applySettings(settings) {
   const maxProf    = document.getElementById('settingMaxProfiles');
   if (numResults) numResults.value = settings.numResults  || 10;
   if (maxProf)    maxProf.value    = settings.maxProfiles || 50;
+  const reEnrich = document.getElementById('settingReEnrichInterval');
+  if (reEnrich) reEnrich.value = settings.reEnrichIntervalHours || 24;
 }
 
 // ── Pattern analysis prompt ───────────────────────────────────

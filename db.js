@@ -228,6 +228,136 @@ const DB = {
     await this._set('scout_excluded_list', [...excluded]);
   },
 
+  // ── Component checksums ──────────────────────────────────
+  // Each trackable component of a profile has its own checksum
+  // so we can detect precisely what changed and only re-process that part
+  //
+  // Components:
+  //   profile_text  → name, headline, about — rarely changes
+  //   posts_list    → list of visible post excerpts — new posts appear
+  //   post_{id}     → individual post content — stable once created
+  //   comments_{id} → comments on a post — grows over time
+
+  async getChecksums(profileUrl) {
+    const key = `scout_checksums_${this._key(profileUrl)}`;
+    return new Promise(resolve => {
+      chrome.storage.local.get([key], r => {
+        resolve(r[key] || {});
+      });
+    });
+  },
+
+  async setChecksum(profileUrl, component, checksum) {
+    const key      = `scout_checksums_${this._key(profileUrl)}`;
+    const existing = await this.getChecksums(profileUrl);
+    existing[component] = {
+      checksum,
+      checkedAt: new Date().toISOString(),
+    };
+    await this._set(key, existing);
+  },
+
+  async checksumChanged(profileUrl, component, newChecksum) {
+    const checksums = await this.getChecksums(profileUrl);
+    const stored    = checksums[component];
+    if (!stored) return true; // Never checked — treat as changed
+    return stored.checksum !== newChecksum;
+  },
+
+  // ── Actions ───────────────────────────────────────────────
+  // Task list populated from nextSteps on enrichment
+  // Each action tracks status and completion
+
+  async getActions() {
+    return new Promise(resolve => {
+      chrome.storage.local.get(['scout_actions'], r => {
+        resolve(r['scout_actions'] || []);
+      });
+    });
+  },
+
+  async saveActions(actions) {
+    // Keep last 200 actions
+    const trimmed = actions.slice(-200);
+    await this._set('scout_actions', trimmed);
+  },
+
+  async addActions(profileUrl, profileName, nextSteps) {
+    if (!nextSteps || !nextSteps.length) return;
+    const actions = await this.getActions();
+    const now     = new Date().toISOString();
+
+    for (const step of nextSteps) {
+      // Avoid duplicates for same profile + type + searchHint
+      const exists = actions.some(a =>
+        a.profileUrl === profileUrl &&
+        a.type === step.type &&
+        a.searchHint === (step.searchHint || '') &&
+        a.status === 'PENDING'
+      );
+      if (exists) continue;
+
+      actions.push({
+        id:          `${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+        profileUrl,
+        profileName: profileName || profileUrl,
+        type:        step.type,
+        instruction: step.instruction || '',
+        searchHint:  step.searchHint || '',
+        priority:    step.priority || 1,
+        status:      'PENDING',   // PENDING | DONE | SKIPPED
+        createdAt:   now,
+        completedAt: null,
+      });
+    }
+
+    await this.saveActions(actions);
+  },
+
+  async completeAction(actionId) {
+    const actions = await this.getActions();
+    const idx     = actions.findIndex(a => a.id === actionId);
+    if (idx === -1) return;
+    actions[idx].status      = 'DONE';
+    actions[idx].completedAt = new Date().toISOString();
+    await this.saveActions(actions);
+  },
+
+  async skipAction(actionId) {
+    const actions = await this.getActions();
+    const idx     = actions.findIndex(a => a.id === actionId);
+    if (idx === -1) return;
+    actions[idx].status      = 'SKIPPED';
+    actions[idx].completedAt = new Date().toISOString();
+    await this.saveActions(actions);
+  },
+
+  // ── Activity counters ─────────────────────────────────────
+  // Tracks totals for dashboard: comments, messages, posts viewed etc
+
+  async getCounters() {
+    return new Promise(resolve => {
+      chrome.storage.local.get(['scout_counters'], r => {
+        resolve(r['scout_counters'] || {
+          profilesViewed:  0,
+          postsViewed:     0,
+          commentsLeft:    0,
+          messagesSent:    0,
+          connectionsAdded: 0,
+          actionsCompleted: 0,
+          lastReset:       new Date().toISOString(),
+        });
+      });
+    });
+  },
+
+  async incrementCounter(key) {
+    const counters = await this.getCounters();
+    counters[key]  = (counters[key] || 0) + 1;
+    await this._set('scout_counters', counters);
+    return counters;
+  },
+
   // ── Helpers ───────────────────────────────────────────────
 
   _key(url) {

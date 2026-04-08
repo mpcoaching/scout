@@ -126,9 +126,6 @@ function isProfileUrl(url) {
 }
 
 function startCapture(url) {
-  // Don't re-capture same URL in this session
-  if (_capturedUrls.has(url)) return;
-
   // Clear any previous capture loop
   if (_captureInterval) clearInterval(_captureInterval);
 
@@ -154,6 +151,7 @@ function startCapture(url) {
       const data = extractProfileData();
       if (!data.rawText || data.rawText.length < 100) return;
 
+      // Track within-session to prevent double-fire on same page
       _capturedUrls.add(url);
 
       chrome.runtime.sendMessage({
@@ -183,9 +181,21 @@ function startCapture(url) {
 if (typeof navigation !== 'undefined') {
   navigation.addEventListener('navigate', (e) => {
     const url = e.destination.url;
+
+    // Clear session cache for the new URL so it can be re-captured
+    _capturedUrls.delete(url);
+
     if (isProfileUrl(url)) {
+      // Clear overlay immediately so old profile data doesn't show
+      const body = document.getElementById('so-body');
+      if (body) body.innerHTML = '<div class="so-status">Loading...</div>';
+
       // Small delay to let LinkedIn's router commit the navigation
       setTimeout(() => startCapture(url), 300);
+    } else {
+      // Hide overlay on non-profile pages
+      const panel = document.getElementById('scout-overlay-panel');
+      if (panel) panel.style.display = 'none';
     }
   });
 }
@@ -267,7 +277,7 @@ function scrapeGoogleResults() {
       position: fixed;
       top: 72px;
       right: 16px;
-      width: 260px;
+      width: 320px;
       z-index: 9999;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 12px;
@@ -294,6 +304,33 @@ function scrapeGoogleResults() {
       font-weight: bold;
       letter-spacing: 0.8px;
       text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #scout-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #scout-status-dot.active {
+      background: #2d7a2d;
+      animation: scout-pulse 1s ease-in-out infinite;
+    }
+    #scout-status-dot.complete {
+      background: #2d7a2d;
+      animation: none;
+    }
+    #scout-status-dot.error {
+      background: #C00000;
+      animation: none;
+    }
+    @keyframes scout-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.8); }
     }
     #scout-overlay-panel .so-close {
       color: rgba(255,255,255,0.6);
@@ -425,7 +462,10 @@ function scrapeGoogleResults() {
     panel.innerHTML = `
       <div class="so-card">
         <div class="so-header" id="so-header">
-          <span class="so-title">🔍 Scout</span>
+          <span class="so-title">
+            <span id="scout-status-dot"></span>
+            Scout
+          </span>
           <span class="so-close" id="so-close">×</span>
         </div>
         <div class="so-body" id="so-body">
@@ -450,15 +490,21 @@ function scrapeGoogleResults() {
     const body = document.getElementById('so-body');
     if (!body) return;
 
-    if (!profile || profile.enrichStatus !== 'ENRICHED') {
+    if (!profile) {
+      // No record at all — blank, capture in progress
+      body.innerHTML = '';
+      return;
+    }
+
+    if (profile.enrichStatus !== 'ENRICHED') {
       const statusText = {
         CAPTURED:   '○ Captured — queued for analysis',
-        QUEUED:     '○ Queued for enrichment...',
+        QUEUED:     '⏳ Queued for enrichment...',
         SENT:       '⏳ Sent for enrichment...',
-        PROCESSING: '⏳ Enriching...',
-        FAILED:     '✗ Enrichment failed',
+        PROCESSING: '⏳ Analysing profile...',
+        FAILED:     '✗ Enrichment failed — will retry',
       };
-      body.innerHTML = `<div class="so-status">${statusText[profile?.enrichStatus] || '○ Not yet captured'}</div>`;
+      body.innerHTML = `<div class="so-status">${statusText[profile.enrichStatus] || '○ Processing...'}</div>`;
       return;
     }
 
@@ -474,12 +520,14 @@ function scrapeGoogleResults() {
 
     body.innerHTML = `
       <div class="so-rag" style="background:${rbc};border:1px solid ${rc}">
-        <div>
-          <div class="so-rag-label" style="color:${rc}">● ${profile.rag}</div>
-          <div class="so-type" style="color:${rc};opacity:0.8">${typeLabels[profile.type]||profile.type||'—'}</div>
+        <div style="flex:1">
+          <div class="so-rag-label" style="color:${rc}">● ${profile.rag} · ${typeLabels[profile.type]||profile.type||'—'}</div>
+          ${profile.actionReason ? `<div style="font-size:9px;color:rgba(255,255,255,0.6);margin-top:2px;line-height:1.3">${profile.actionReason.substring(0,80)}</div>` : ''}
         </div>
-        <div class="so-priority">P${profile.priority||0}</div>
-        ${profile.icpScore != null ? `<div class="so-icp">ICP<br>${profile.icpScore}/10</div>` : ''}
+        <div style="text-align:right">
+          <div class="so-priority">P${profile.priority||0}</div>
+          ${profile.icpScore != null ? `<div class="so-icp">${profile.icpScore}/10</div>` : ''}
+        </div>
       </div>
 
       ${profile.action ? `
@@ -502,6 +550,7 @@ function scrapeGoogleResults() {
       <div style="display:flex;gap:4px;margin-top:6px">
         <button class="so-btn log-comment-btn" style="flex:1;text-align:center">💬 Commented</button>
         <button class="so-btn log-message-btn" style="flex:1;text-align:center;background:#2d5a2d">✉ Messaged</button>
+        <button class="so-btn re-enrich-btn" style="flex:1;text-align:center;background:#333;color:#888" title="Force re-enrichment">↺</button>
       </div>`;
 
     document.getElementById('so-copy-bait')?.addEventListener('click', (e) => {
@@ -527,19 +576,59 @@ function scrapeGoogleResults() {
         text: '',
       }).catch(() => {});
     });
+
+    body.querySelector('.re-enrich-btn')?.addEventListener('click', (e) => {
+      e.target.textContent = '⏳';
+      e.target.disabled = true;
+      chrome.runtime.sendMessage({
+        action: 'reEnrich',
+        url: window.location.href,
+      }).catch(() => {});
+      setTimeout(() => {
+        e.target.textContent = '↺';
+        e.target.disabled = false;
+      }, 3000);
+    });
   }
 
   // ── Load profile data ─────────────────────────────────────
 
+  function setDot(state) {
+    const dot = document.getElementById('scout-status-dot');
+    if (!dot) return;
+    dot.className = state; // 'active', 'complete', 'error', or ''
+  }
+
   function loadAndRender(url) {
     const panel = document.getElementById(OVERLAY_ID);
     if (!panel) return;
+
+    // Pulse dot while checking storage
+    setDot('active');
 
     chrome.storage.local.get(['scout_profiles'], (data) => {
       const profiles = data.scout_profiles || {};
       const m        = url.match(/linkedin\.com\/in\/([^/?#]+)/);
       const key      = m ? `https://www.linkedin.com/in/${m[1]}/` : url;
       const profile  = profiles[key] || null;
+
+      if (!profile) {
+        // Unknown profile — show blank, dot stays active (capturing)
+        setDot('active');
+        const body = document.getElementById('so-body');
+        if (body) body.innerHTML = '<div class="so-status">Capturing profile...</div>';
+        return;
+      }
+
+      const status = profile.enrichStatus;
+      if (status === 'ENRICHED') {
+        setDot('complete');
+      } else if (status === 'FAILED') {
+        setDot('error');
+      } else {
+        setDot('active'); // QUEUED, SENT, PROCESSING
+      }
+
       renderOverlay(profile);
     });
   }
@@ -553,7 +642,14 @@ function scrapeGoogleResults() {
     const m   = url.match(/linkedin\.com\/in\/([^/?#]+)/);
     const key = m ? `https://www.linkedin.com/in/${m[1]}/` : url;
     const profile = (changes.scout_profiles.newValue || {})[key];
-    if (profile) renderOverlay(profile);
+    if (!profile) return;
+
+    // Update dot state based on enrichment status
+    if (profile.enrichStatus === 'ENRICHED') setDot('complete');
+    else if (profile.enrichStatus === 'FAILED') setDot('error');
+    else setDot('active');
+
+    renderOverlay(profile);
   });
 
   // ── Init and SPA navigation ───────────────────────────────

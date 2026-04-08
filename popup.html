@@ -109,7 +109,8 @@
     </div>
     <div class="header-tabs">
       <button class="tab-btn active" id="tabMain">Scout</button>
-      <button class="tab-btn" id="tabList">List <span id="listBadge" style="display:none;background:#2d7a2d;color:white;border-radius:8px;padding:1px 5px;font-size:9px;margin-left:2px">0</span></button>
+      <button class="tab-btn" id="tabActions">⚡ <span id="actionsBadge" style="display:none;background:#C00000;color:white;border-radius:8px;padding:1px 5px;font-size:9px;margin-left:2px">0</span></button>
+      <button class="tab-btn" id="tabList">List</button>
       <button class="tab-btn" id="tabSettings">⚙</button>
     </div>
   </div>
@@ -256,6 +257,30 @@
       <div id="listTabMeta" class="list-meta"></div>
       <div class="profile-list" id="listTabProfiles" style="max-height:380px"></div>
       <div id="listTabEmpty" style="font-size:11px;color:#555;font-style:italic;padding:8px 0">No profiles yet — run a search to populate the list.</div>
+    </div>
+  </div>
+
+  <!-- ACTIONS TAB -->
+  <div class="tab-panel" id="panelActions">
+    <div class="section">
+      <!-- Dashboard counters -->
+      <div id="dashboardCounters" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px"></div>
+      <!-- Filter -->
+      <div style="display:flex;gap:4px;margin-bottom:8px">
+        <button class="action-filter-btn active" data-filter="PENDING"
+          style="background:#1F4E79;color:white;border:none;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer">
+          Pending
+        </button>
+        <button class="action-filter-btn" data-filter="DONE"
+          style="background:#1a1a1a;color:#888;border:1px solid #333;border-radius:4px;padding:3px 8px;font-size:10px;cursor:pointer">
+          Done
+        </button>
+      </div>
+      <!-- Action list -->
+      <div id="actionsList" style="max-height:420px;overflow-y:auto"></div>
+      <div id="actionsEmpty" style="font-size:11px;color:#555;font-style:italic;padding:8px 0;display:none">
+        No pending actions — visit LinkedIn profiles to generate tasks
+      </div>
     </div>
   </div>
 
